@@ -1,0 +1,61 @@
+# bis-ci :: the one CI workflow for every BiS addon (debt 12, 12 Sep 2026; moved here 19 Sep).
+#
+# Each addon repo calls this with a nine-line caller (.github/workflows/check.yml, template in
+# _bisdev/ci/caller.yml). It lays the three folders out the way they sit on Arn's disk -
+# AddOns/<Addon>, AddOns/_bisdev, AddOns/BiSTheme - installs lua5.1 and runs
+# `_bisdev/check.sh <Addon>`: every dev suite, the embed-bytes asserts against canon, bislint,
+# the API fence. Red suite = red check on the commit.
+#
+# WHY THIS REPO EXISTS, AND WHY IT IS PUBLIC. This workflow lived in bisdev until the addons went
+# public. A PUBLIC repository cannot `uses:` a reusable workflow that lives in a PRIVATE one -
+# no setting opens that door, and bisdev's Actions access was already "user". Every run died
+# before a single job started, with the only words GitHub gives you: "This run likely failed
+# because of a workflow file issue". Seven repos, all at once, the minute they were flipped.
+#
+# So the workflows moved to a repo that is public and holds NOTHING ELSE: two YAML files, no
+# scripts, no notes, no addon code. Public is a property of the caller's reach, not a decision
+# about bisdev - bisdev stays private and is still cloned below with BISDEV_TOKEN.
+#
+# ONE COPY, TEN CALLERS. A syntax error here breaks every BiS repo at once, which is why main is
+# protected and self.yml parses both files on every pull request.
+#
+# The sibling checkouts are private repos, so the caller's GITHUB_TOKEN cannot read them:
+# BISDEV_TOKEN is a repo secret on every addon repo (gh auth token, set by job 082).
+name: check
+on:
+  workflow_call:
+    inputs:
+      addon:
+        description: the addon folder / repo name (BiSTools, Nebbinator, ...)
+        required: true
+        type: string
+    secrets:
+      BISDEV_TOKEN:
+        required: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: the addon
+        uses: actions/checkout@v4
+        with:
+          path: AddOns/${{ inputs.addon }}
+      - name: _bisdev (check.sh, bislint, the canonical libs)
+        uses: actions/checkout@v4
+        with:
+          repository: arnold891-eng/bisdev
+          token: ${{ secrets.BISDEV_TOKEN }}
+          path: AddOns/_bisdev
+      - name: BiSTheme (canonical Console.lua / Options.lua)
+        uses: actions/checkout@v4
+        with:
+          repository: arnold891-eng/BiSTheme
+          token: ${{ secrets.BISDEV_TOKEN }}
+          path: AddOns/BiSTheme
+      - name: lua 5.1
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+      - name: check.sh
+        working-directory: AddOns
+        run: |
+          chmod +x _bisdev/check.sh
+          _bisdev/check.sh ${{ inputs.addon }}

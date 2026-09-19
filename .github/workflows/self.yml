@@ -1,0 +1,43 @@
+# bis-ci :: the guard on the guard.
+#
+# Ten repos call the two workflows beside this one. A syntax error in either breaks all ten at
+# once, and it breaks them in the worst way GitHub has: no job starts, no log exists, and the
+# only message is "This run likely failed because of a workflow file issue" - which is how this
+# repo came to exist in the first place. So main is protected and this is the required check.
+#
+# It asks three things of each file: it parses, it is still callable (`on.workflow_call` - drop
+# that by accident and every caller breaks), and it still names the job the callers' branch
+# protection requires (`check / check`, `release / release`).
+name: self
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  self:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: the workflows parse, are callable, and keep their job names
+        run: |
+          python3 - <<'PY'
+          import sys, yaml
+          want = {"check.yml": "check", "release.yml": "release"}
+          bad = 0
+          for f, job in want.items():
+              p = ".github/workflows/" + f
+              try:
+                  d = yaml.safe_load(open(p, encoding="utf-8"))
+              except Exception as e:
+                  print("%s: does not parse - %s" % (f, e)); bad = 1; continue
+              # PyYAML reads a bare `on:` as the boolean True - YAML 1.1, and the reason a
+              # hand-written check on this file has to look for both spellings
+              trig = d.get("on", d.get(True, {})) or {}
+              if "workflow_call" not in trig:
+                  print("%s: no `on.workflow_call` - every caller would break" % f); bad = 1
+              if job not in (d.get("jobs") or {}):
+                  print("%s: no job named %r - callers require the context %r" % (f, job, job + " / " + job)); bad = 1
+              if not bad:
+                  print("%s: parses, callable, job %r" % (f, job))
+          sys.exit(bad)
+          PY
