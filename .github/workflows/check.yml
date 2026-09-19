@@ -46,7 +46,11 @@ jobs:
           repository: arnold891-eng/bisdev
           token: ${{ secrets.BISDEV_TOKEN }}
           path: AddOns/_bisdev
+      # skipped when the addon IS BiSTheme: the same path twice checks the pull request's
+      # own code out and then overwrites it with BiSTheme's main, and the suite grades the
+      # wrong tree - which it had been doing quietly (19 Sep 2026)
       - name: BiSTheme (canonical Console.lua / Options.lua)
+        if: ${{ inputs.addon != 'BiSTheme' }}
         uses: actions/checkout@v4
         with:
           repository: arnold891-eng/BiSTheme
