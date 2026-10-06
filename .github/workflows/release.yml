@@ -13,7 +13,8 @@
 #   3. CurseForge accepts the token (a read-only call; the token is never printed)
 #   4. the addon's own dev/release.ps1 on pwsh, with RELEASE_OUT and CURSEFORGE_TOKEN set -
 #      the script reads those instead of Arn's Downloads folder and token file
-#   5. the zip is opened: no dev/, CLAUDE.md or .git* inside, or the job goes red
+#   5. the zip is opened: no dev/, CLAUDE.md or .git* inside, and no file git does not track,
+#      or the job goes red
 #   6. the zip is kept as a workflow artifact (download it from the run page)
 #
 # Secrets on every addon repo: BISDEV_TOKEN (private sibling checkouts, as check.yml) and
@@ -142,6 +143,25 @@ jobs:
             echo "the zip contains files it must not ship"
             exit 1
           fi
+          # AND NOTHING GIT DOES NOT TRACK (6 Oct 2026). The names above are a blocklist, and a
+          # blocklist only knows what somebody thought of: FojjiCore 3.1.0 shipped a "Claude
+          # outputs" folder the night before this line was written. Every file in the zip must be
+          # one the repository tracks. _bisdev/release/stage.ps1 builds the zip that way; this is
+          # the second pair of eyes, so the two cannot drift apart unnoticed.
+          git -C "AddOns/$ADDON" -c core.quotepath=off ls-files | sort > "$RUNNER_TEMP/tracked.txt"
+          unzip -Z1 "$zip" | sed 's#\\#/#g' | grep -v '/$' | sed 's#^[^/]*/##' | sort > "$RUNNER_TEMP/zipped.txt"
+          # an empty listing must never read as "nothing untracked" - a broken unzip would pass
+          if [ ! -s "$RUNNER_TEMP/zipped.txt" ] || [ ! -s "$RUNNER_TEMP/tracked.txt" ]; then
+            echo "could not list the zip or the repository - refusing to call it clean"
+            exit 1
+          fi
+          extra=$(comm -13 "$RUNNER_TEMP/tracked.txt" "$RUNNER_TEMP/zipped.txt")
+          if [ -n "$extra" ]; then
+            echo "the zip carries files git does not track:"
+            printf '%s\n' "$extra" | sed 's/^/  untracked: /'
+            exit 1
+          fi
+          echo "every file in the zip is tracked by git ($(wc -l < "$RUNNER_TEMP/zipped.txt") files)"
       - name: 6. keep the zip
         uses: actions/upload-artifact@v4
         with:
