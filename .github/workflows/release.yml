@@ -124,7 +124,15 @@ jobs:
             Write-Host "DRY RUN - the zip is built and checked, nothing is uploaded"
             & $script -ZipOnly
           } else {
-            & $script -Type release
+            # THE TAG SAYS WHICH KIND (7 Oct 2026). This always uploaded as "release", so a beta
+            # tag would have gone to every player. v1.2.3-beta2 uploads as a CurseForge BETA,
+            # v1.2.3-alpha1 as an ALPHA - players get those only if they chose to - and a plain
+            # v1.2.3 is a release, as before.
+            $type = "release"
+            if ($env:GITHUB_REF -match '^refs/tags/v[^/]*-beta') { $type = "beta" }
+            elseif ($env:GITHUB_REF -match '^refs/tags/v[^/]*-alpha') { $type = "alpha" }
+            Write-Host "uploading as: $type ($env:GITHUB_REF)"
+            & $script -Type $type
           }
       - name: 5. the zip holds game files only
         run: |
